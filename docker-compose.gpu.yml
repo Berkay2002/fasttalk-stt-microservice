@@ -1,0 +1,139 @@
+# ============================================================================
+# Docker Compose for STT Service GPU Deployment (Production-Ready)
+# Supports standalone deployment or integration with backend-orchestration
+# ============================================================================
+
+services:
+  stt-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.gpu
+      args:
+        # Build-time model selection (can be overridden)
+        WHISPER_MODEL: ${WHISPER_MODEL:-large-v3}
+
+    image: fasttalk-stt-service:latest
+    container_name: stt-service
+    restart: unless-stopped
+
+    # GPU configuration for high-end RTX cards
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['${GPU_DEVICE_ID:-0}']
+              capabilities: [gpu, compute, utility]
+
+    # Environment variables - can be overridden via .env file
+    environment:
+      # GPU Configuration
+      - CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
+      - NVIDIA_VISIBLE_DEVICES=${NVIDIA_VISIBLE_DEVICES:-0}
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - CUDA_MEMORY_FRACTION=${CUDA_MEMORY_FRACTION:-0.95}
+      - PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512
+
+      # Model Configuration
+      - MODEL_PATH=/app/models
+      - WHISPER_MODEL=${WHISPER_MODEL:-large-v3}
+      - WHISPER_BACKEND=faster-whisper
+
+      # Server Configuration
+      - STT_HOST=0.0.0.0
+      - STT_PORT=${STT_PORT:-8000}
+      - STT_MAX_CONNECTIONS=${STT_MAX_CONNECTIONS:-50}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+
+      # Application Configuration
+      - PYTHONUNBUFFERED=1
+      - PYTHONPATH=/app
+
+    # Port mappings
+    ports:
+      - "${STT_PORT:-8001}:8000"  # WebSocket STT service port
+      - "${STT_MONITORING_PORT:-9091}:9091"  # Monitoring/health check port
+
+    # Volume mappings for persistence and performance
+    volumes:
+      # Model cache (persistent across restarts)
+      - stt_models:/app/models
+      # Logs (persistent for debugging)
+      - stt_logs:/app/logs
+      # Shared memory for better performance
+      - type: tmpfs
+        target: /dev/shm
+        tmpfs:
+          size: 2147483648  # 2GB
+
+    # Security configuration
+    user: "1000:1000"
+    security_opt:
+      - no-new-privileges:true
+
+    # Capability restrictions
+    cap_drop:
+      - ALL
+    cap_add:
+      - SETUID
+      - SETGID
+
+    # Resource limits (adjust based on your system)
+    mem_limit: ${MEM_LIMIT:-32g}
+    memswap_limit: ${MEM_LIMIT:-32g}
+    shm_size: ${SHM_SIZE:-2g}
+
+    # Health check with proper startup grace period
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 90s  # Allow time for model loading
+      retries: 3
+
+    # Logging configuration with rotation
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "5"
+        labels: "service=stt"
+
+    # Network configuration - use external network for backend integration
+    networks:
+      - fasttalk-network
+
+# ============================================================================
+# Named Volumes for Data Persistence
+# ============================================================================
+volumes:
+  stt_models:
+    name: stt_models
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${MODELS_PATH:-./models}
+
+  stt_logs:
+    name: stt_logs
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${LOGS_PATH:-./logs}
+
+# ============================================================================
+# Network Configuration
+# ============================================================================
+networks:
+  fasttalk-network:
+    name: fasttalk-network
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: ${NETWORK_SUBNET:-172.20.0.0/16}
+          gateway: ${NETWORK_GATEWAY:-172.20.0.1}
+    driver_opts:
+      com.docker.network.bridge.name: fasttalk-br0

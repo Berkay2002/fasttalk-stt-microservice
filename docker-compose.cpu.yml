@@ -1,0 +1,128 @@
+# ============================================================================
+# Docker Compose for STT Service CPU Deployment
+# CPU-optimized deployment
+# ============================================================================
+
+services:
+  stt-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.cpu
+      args:
+        # Build-time model selection (can be overridden)
+        WHISPER_MODEL: ${WHISPER_MODEL:-base}
+
+    image: fasttalk-stt-service-cpu:latest
+    container_name: stt-service-cpu
+    restart: unless-stopped
+
+    # CPU resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '${CPU_LIMIT:-8.0}'
+          memory: ${MEM_LIMIT:-16g}
+        reservations:
+          cpus: '${CPU_RESERVATION:-4.0}'
+          memory: 8g
+
+    # Environment variables
+    environment:
+      # Compute Configuration
+      - COMPUTE_DEVICE=cpu
+      - OMP_NUM_THREADS=${NUM_THREADS:-12}
+      - MKL_NUM_THREADS=${NUM_THREADS:-12}
+      - OPENBLAS_NUM_THREADS=${NUM_THREADS:-12}
+
+      # Model Configuration
+      - MODEL_PATH=/app/models
+      - WHISPER_MODEL=${WHISPER_MODEL:-base}
+      - WHISPER_BACKEND=faster-whisper
+      - BEAM_SIZE=${BEAM_SIZE:-5}
+      - FP16=false
+      - COMPUTE_TYPE=int8
+      - CPU_THREADS=${NUM_THREADS:-12}
+      - NUM_WORKERS=${NUM_WORKERS:-4}
+      - BATCH_SIZE=${BATCH_SIZE:-4}
+
+      # Server Configuration
+      - STT_HOST=0.0.0.0
+      - STT_PORT=${STT_PORT:-8001}
+      - STT_MAX_CONNECTIONS=${STT_MAX_CONNECTIONS:-50}
+      - STT_MONITORING_PORT=${STT_MONITORING_PORT:-9091}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+
+      # Application Configuration
+      - PYTHONUNBUFFERED=1
+      - PYTHONPATH=/app
+
+    # Port mappings
+    ports:
+      - "${STT_PORT:-8001}:8001"
+      - "${STT_MONITORING_PORT:-9091}:9091"
+
+    # Volume mounts
+    volumes:
+      - stt_logs:/app/logs
+      - stt_models:/app/models
+
+    # Shared memory
+    shm_size: ${SHM_SIZE:-1g}
+
+    # Health check
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
+
+    # Network
+    networks:
+      - fasttalk-network
+
+    # Logging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "5"
+
+    # Security
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - SETUID
+      - SETGID
+
+# ============================================================================
+# Named Volumes
+# ============================================================================
+volumes:
+  stt_logs:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${LOGS_PATH:-./logs}
+  stt_models:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${MODELS_PATH:-./models}
+
+# ============================================================================
+# Network Configuration
+# ============================================================================
+networks:
+  fasttalk-network:
+    name: fasttalk-network
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: ${NETWORK_SUBNET:-172.20.0.0/16}
+          gateway: ${NETWORK_GATEWAY:-172.20.0.1}
