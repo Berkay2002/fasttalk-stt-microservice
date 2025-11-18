@@ -323,3 +323,24 @@ def log_error(message: str, exception: Optional[Exception] = None, **kwargs):
 def log_warning(message: str, **kwargs):
     """Quick warning logging."""
     stt_logger.warning(message, kwargs if kwargs else None)
+
+def setup_logging(log_level: str = "INFO"):
+    """
+    Setup logging with specified level.
+
+    Args:
+        log_level: Logging level (DEBUG, INFO, WARNING, ERROR)
+    """
+    level_map = {
+        "DEBUG": logging.DEBUG,
+        "INFO": logging.INFO,
+        "WARNING": logging.WARNING,
+        "ERROR": logging.ERROR
+    }
+
+    level = level_map.get(log_level.upper(), logging.INFO)
+    stt_logger.logger.setLevel(level)
+
+    # Update all handlers
+    for handler in stt_logger.logger.handlers:
+        handler.setLevel(level)
