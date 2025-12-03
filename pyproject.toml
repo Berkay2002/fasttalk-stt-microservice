@@ -1,0 +1,70 @@
+# ============================================================================
+# FastTalk STT Microservice
+# ============================================================================
+# Speech-to-Text service using faster-whisper.
+#
+# Development:
+#   uv venv && source .venv/bin/activate
+#   uv pip install -e ".[dev]"
+#
+# Docker builds use requirements.txt for simplicity and caching.
+# GPU vs CPU dependencies are handled via requirements.txt with --extra-index-url
+
+[project]
+name = "fasttalk-stt"
+version = "1.0.0"
+description = "FastTalk STT microservice"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+
+dependencies = [
+    # Core STT
+    "faster-whisper>=1.1.0",
+    
+    # Web Framework
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+    "websockets>=13.0",
+    "python-multipart>=0.0.9",
+    
+    # Audio processing
+    "numpy<2.0.0",
+    "scipy>=1.11.0",
+    "soundfile>=0.12.0",
+    "ffmpeg-python>=0.2.0",
+    "pydub>=0.25.0",
+    "webrtcvad>=2.0.10",
+    
+    # Monitoring
+    "flask>=3.0.0",
+    "psutil>=6.0.0",
+    "requests>=2.32.0",
+    
+    # Async support
+    "aiofiles>=24.1.0",
+]
+
+[project.optional-dependencies]
+# GPU dependencies (CUDA 12.1)
+gpu = [
+    "torch>=2.2.0",
+    "torchaudio>=2.2.0",
+    "nvidia-cudnn-cu12>=9.0.0",
+]
+# CPU-only dependencies
+cpu = [
+    "torch>=2.2.0",
+    "torchaudio>=2.2.0",
+]
+dev = [
+    "ruff>=0.8.0",
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
